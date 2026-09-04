@@ -1,0 +1,13 @@
+[project]
+name = "diffusion-stochastic-processes"
+version = "0.1.0"
+description = "Minimal PyTorch validation of denoising score matching for a 1D Gaussian"
+requires-python = ">=3.12,<3.13"
+dependencies = ["torch (>=2.14.0,<3.0.0)", "matplotlib (>=3.11.1,<4.0.0)", "jupyter (>=1.1.1,<2.0.0)"]
+
+[tool.poetry]
+package-mode = false
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
