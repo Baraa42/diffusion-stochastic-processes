@@ -1,0 +1,3 @@
+# Gaussian Diffusion
+
+Notes placeholder.
