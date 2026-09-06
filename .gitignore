@@ -17,3 +17,4 @@ results/*
 !results/.gitkeep
 !results/00_gaussian_1d/
 !results/00_gaussian_1d/*.png
+!results/00_gaussian_1d/metrics.json

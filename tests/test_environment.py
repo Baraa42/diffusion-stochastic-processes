@@ -38,3 +38,24 @@ def test_exact_score_points_toward_mean() -> None:
     score = experiment.exact_score(x, t)
     assert score[0].item() > 0
     assert score[1].item() < 0
+
+
+def test_reverse_sampler_preserves_shape() -> None:
+    xT = torch.zeros(32, 1)
+    generator = torch.Generator().manual_seed(1)
+    samples = experiment.reverse_sample(xT, experiment.exact_score, 10, generator)
+    assert samples.shape == xT.shape
+
+
+def test_exact_reverse_sampler_recovers_target_moments() -> None:
+    generator = torch.Generator().manual_seed(2)
+    xT = experiment.mu + (experiment.tau**2 + experiment.t_max) ** 0.5 * torch.randn(
+        4_000, 1, generator=generator
+    )
+    noise_generator = torch.Generator().manual_seed(3)
+    samples = experiment.reverse_sample(
+        xT, experiment.exact_score, 200, noise_generator
+    )
+    target_variance = experiment.tau**2 + experiment.t_min
+    assert abs(samples.mean().item() - experiment.mu) < 0.08
+    assert abs(samples.var(unbiased=True).item() - target_variance) < 0.12

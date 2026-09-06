@@ -1,68 +1,142 @@
-# Stage 0: 1D Gaussian DSM validation
+# Stage 0: 1D Gaussian diffusion
 
-This experiment uses
+Stage 0 is one controlled experiment: learn the score of a corrupted 1D
+Gaussian with denoising score matching (DSM), compare it with the analytical
+score, and use both scores in the same reverse Euler-Maruyama sampler.
 
-\[
-X_0 \sim \mathcal N(1, 1), \qquad
-X_t = X_0 + \sqrt{t}\,\varepsilon, \qquad
-\varepsilon \sim \mathcal N(0,1),
-\]
+## Forward process and score target
 
-with time sampled uniformly from `[0.05, 2.0]`. The network is trained only
-against the conditional DSM target
+The data and corruption process are
 
 \[
--\frac{\varepsilon}{\sqrt t}.
+X_0\sim\mathcal N(\mu,\tau^2),\qquad
+X_t=X_0+\sqrt t\,\varepsilon,\qquad
+\varepsilon\sim\mathcal N(0,1),
 \]
 
-The analytical marginal score is reserved for validation:
+with `mu = 1`, `tau = 1`, and `t in [0.001, 2]`. Conditional on (X_0),
 
 \[
-s^*(x,t)=-\frac{x-1}{1+t}.
+X_t\mid X_0\sim\mathcal N(X_0,t),\qquad
+\nabla_{x_t}\log p(x_t\mid x_0)
+=-\frac{x_t-x_0}{t}
+=-\frac{\varepsilon}{\sqrt t}.
 \]
 
-## Model and training
+This conditional corruption score is the DSM target. The network receives only
+`(x_t, t)`—never `x0` or `eps`. Under squared error, the optimal prediction is
+the conditional mean of the noisy target given `(x_t, t)`. The denoising-score
+identity makes that conditional mean the marginal score. Here,
 
-The score model receives only `(x_t, t)`. It concatenates and applies fixed
-input centering/scaling before a `2 -> 32 -> 32 -> 1` MLP with `Tanh`
-activations. Training uses Adam with learning rate `1e-3`, batch size `4096`,
-seed `7`, and `2000` steps.
+\[
+X_t\sim\mathcal N(\mu,\tau^2+t),\qquad
+s^*(x,t)=-\frac{x-\mu}{\tau^2+t}.
+\]
 
-## Validation
+The analytical score is used only for validation and the exact-score reverse
+control, not as a training target.
 
-The learned and exact scores are compared at
-`t = [0.05, 0.2, 0.5, 1.0, 2.0]` on a fixed 300-point grid and on 100,000
-fresh samples from the exact marginal at each time. The run also checks the
-score at `x = mu - 2`, `mu`, and `mu + 2`.
+## Time sampling and weighted DSM
 
-Observed MSE from the seeded run:
+Small time is statistically difficult because
+
+\[
+\operatorname{Var}\left(-\varepsilon/\sqrt t\right)=1/t.
+\]
+
+This run samples time log-uniformly,
+
+\[
+\log t\sim U(\log t_{\min},\log t_{\max}),
+\]
+
+which gives the small-time region more coverage than uniform time sampling. It
+also changes the stochastic optimization behavior and did not improve every
+fixed-time MSE in this seeded run. Training uses
+
+\[
+\mathbb E\left[t\left(s_\theta(X_t,t)+\frac{\varepsilon}{\sqrt t}\right)^2\right].
+\]
+
+Multiplication by (t) counteracts the (1/t) target variance without changing
+the target itself or the population-optimal marginal score.
+
+The model is a `2 -> 32 -> 32 -> 1` MLP with `Tanh` activations. It is trained
+on CPU for 2,000 Adam steps with batch size 4,096, learning rate `1e-3`, and
+seed 42.
+
+## Score validation
+
+Each fixed time uses a 300-point grid on `mu +/- 4*tau` and 100,000 fresh
+on-distribution samples.
 
 | t | Fixed-grid MSE | On-distribution MSE |
 |---:|---:|---:|
-| 0.05 | 9.480102e-02 | 3.651623e-03 |
-| 0.20 | 1.953202e-02 | 6.024865e-04 |
-| 0.50 | 5.642961e-04 | 4.511883e-04 |
-| 1.00 | 4.443171e-04 | 2.069998e-04 |
-| 2.00 | 4.238228e-04 | 5.589580e-04 |
+| 0.001 | 1.764121e-01 | 4.015340e-03 |
+| 0.005 | 1.707468e-01 | 3.792403e-03 |
+| 0.010 | 1.638921e-01 | 3.603320e-03 |
+| 0.050 | 1.172250e-01 | 2.529740e-03 |
+| 0.200 | 2.874260e-02 | 5.994295e-04 |
+| 1.000 | 5.082386e-04 | 2.299515e-04 |
+| 2.000 | 1.138842e-03 | 6.919729e-04 |
 
-At step 2000, the sampled DSM loss was `1.310870` and the fresh-batch MSE
-against the analytical score was `3.542737e-04`. The DSM loss fluctuated around
-its expected positive floor (approximately `1.35`) rather than approaching
-zero. This is expected: even after conditioning on `(x_t, t)`, the conditional
-target `-eps / sqrt(t)` retains randomness. Its conditional mean is the smooth
-marginal score learned by the MSE regressor.
+The final logged weighted DSM loss was `0.885434`, and the fresh mixed-time
+analytical MSE was `2.284013e-03`. Directional checks were positive left of the
+mean, close to zero at the mean, and negative right of the mean. The larger
+low-time grid errors occur mainly in the low-density far tails where the small
+`Tanh` network saturates; the on-distribution errors are materially smaller.
 
-The directional checks had the correct signs on both sides of the mean, were
-near zero at the mean, and decreased in magnitude with increasing time. The
-larger small-time fixed-grid error occurs mainly near the low-density
-`mu +/- 4*tau` endpoints, where a small `Tanh` network has approximation error;
-the on-distribution error is much smaller.
+## Reverse Euler-Maruyama validation
 
-Run with:
+For the variance-exploding forward SDE used here, one backward step of size
+`dt > 0` is
+
+\[
+X_{t-dt}\approx X_t+dt\,s(X_t,t)+\sqrt{dt}\,Z,
+\qquad Z\sim\mathcal N(0,1).
+\]
+
+The score-agnostic sampler accepts either `exact_score` or the learned model.
+Both runs start from the exact toy terminal marginal
+
+\[
+X_T\sim\mathcal N(\mu,\tau^2+t_{\max}).
+\]
+
+That initialization is available because this Gaussian experiment is
+analytically controlled; it is not presented as a general practical terminal
+prior. Within each paired comparison, exact and learned runs use the same
+seeded `xT` and Brownian increments. The target at `t_min` has mean `1.0` and
+variance `1.001`.
+
+| N | Exact mean | Exact variance | Exact Euler expected variance | Learned mean | Learned variance |
+|---:|---:|---:|---:|---:|---:|
+| 100 | 1.001066 | 1.009218 | 1.009946 | 1.007431 | 1.020838 |
+| 500 | 1.000246 | 0.983692 | 1.002779 | 1.006384 | 0.995269 |
+| 1000 | 1.006160 | 0.996558 | 1.001889 | 1.012328 | 1.008834 |
+| 2000 | 1.005026 | 0.992788 | 1.001444 | 1.011169 | 1.005167 |
+
+The analytically propagated exact Euler variance shows the discretization bias
+decreasing from `8.95e-3` at 100 steps to `4.44e-4` at 2,000 steps. Sampled
+exact variances are not monotone because 20,000-particle Monte Carlo error is
+still visible. Comparing paired exact and learned samples isolates an
+additional learned-score effect: learned variance stays roughly `0.012` above
+the paired exact result. At 2,000 steps it is `1.005167`, a small positive bias
+relative to the `1.001` target near the terminal low-time regime.
+
+Reverse sampling materially contracts the initial variance from `3.0` toward
+the target, but the result is not exact. The exact-score control diagnoses time
+discretization and Monte Carlo error; the remaining paired gap diagnoses score
+approximation error. Stage 0 implements no probability-flow ODE, flow matching,
+or larger architecture.
+
+## Reproduce
 
 ```bash
+poetry install
+poetry run pytest
 poetry run python experiments/00_gaussian_1d/train.py
 ```
 
-The script saves plots under `results/00_gaussian_1d/`. Reverse diffusion,
-reverse SDE sampling, and probability-flow ODEs are not implemented.
+The run writes plots and machine-readable metrics to
+`results/00_gaussian_1d/metrics.json`.
