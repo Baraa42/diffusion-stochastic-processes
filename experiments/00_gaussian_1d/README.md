@@ -41,7 +41,7 @@ control, not as a training target.
 Small time is statistically difficult because
 
 $$
-\operatorname{Var}\left(-\varepsilon/\sqrt t\right)=1/t.
+\mathrm{Var}\left(-\varepsilon/\sqrt t\right)=1/t.
 $$
 
 This run samples time log-uniformly,
