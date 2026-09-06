@@ -196,7 +196,7 @@ def reverse_sample(
     n_steps: int,
     generator: torch.Generator | None = None,
 ) -> torch.Tensor:
-    """Euler-Maruyama sampling from t_max down to t_min using any score_fn."""
+    """Euler-Maruyama sampling to zero without evaluating below t_min."""
     if n_steps <= 0:
         raise ValueError("n_steps must be positive")
 
@@ -208,6 +208,11 @@ def reverse_sample(
         t = torch.full_like(x, time)
         noise = torch.randn(x.shape, generator=generator, device=x.device)
         x = x + dt * score_fn(x, t) + sqrt_dt * noise
+
+    # One final step lands at data time zero while querying the score at t_min.
+    t = torch.full_like(x, t_min)
+    noise = torch.randn(x.shape, generator=generator, device=x.device)
+    x = x + t_min * score_fn(x, t) + math.sqrt(t_min) * noise
     return x
 
 
@@ -219,11 +224,15 @@ def exact_euler_variance(n_steps: int) -> float:
         time = t_max - step * dt
         contraction = 1 - dt / (tau**2 + time)
         variance = contraction**2 * variance + dt
+    final_contraction = 1 - t_min / (tau**2 + t_min)
+    variance = final_contraction**2 * variance + t_min
     return variance
 
 
 @torch.no_grad()
-def reverse_discretization_experiment(model: nn.Module) -> list[dict[str, float]]:
+def reverse_discretization_experiment(
+    model: nn.Module,
+) -> tuple[list[dict[str, float]], torch.Tensor, torch.Tensor]:
     """Compare exact and learned scores with paired initial data and noise."""
     model.eval()
     initial_generator = torch.Generator(device="cpu").manual_seed(reverse_seed)
@@ -233,6 +242,8 @@ def reverse_discretization_experiment(model: nn.Module) -> list[dict[str, float]
 
     reverse_results: list[dict[str, float]] = []
     print("\nReverse Euler-Maruyama discretization")
+    final_exact_samples = torch.empty(0, 1, device=device)
+    final_learned_samples = torch.empty(0, 1, device=device)
     for n_steps in n_values:
         noise_seed = reverse_seed + n_steps
         exact_generator = torch.Generator(device="cpu").manual_seed(noise_seed)
@@ -249,6 +260,8 @@ def reverse_discretization_experiment(model: nn.Module) -> list[dict[str, float]
             "learned_variance": learned_samples.var(unbiased=True).item(),
         }
         reverse_results.append(result)
+        final_exact_samples = exact_samples
+        final_learned_samples = learned_samples
         print(
             f"N={n_steps:4d}  exact=({result['exact_mean']:.6f}, "
             f"{result['exact_variance']:.6f})  learned=({result['learned_mean']:.6f}, "
@@ -256,7 +269,7 @@ def reverse_discretization_experiment(model: nn.Module) -> list[dict[str, float]
             f"exact_euler_variance={result['exact_euler_variance']:.6f}"
         )
 
-    return reverse_results
+    return reverse_results, final_exact_samples, final_learned_samples
 
 
 def plot_training_metrics(history: dict[str, list[float]]) -> None:
@@ -286,7 +299,7 @@ def plot_reverse_metrics(reverse_results: list[dict[str, float]]) -> None:
     exact_variances = [row["exact_variance"] for row in reverse_results]
     exact_euler_variances = [row["exact_euler_variance"] for row in reverse_results]
     learned_variances = [row["learned_variance"] for row in reverse_results]
-    target_variance = tau**2 + t_min
+    target_variance = tau**2
 
     figure, axis = plt.subplots(figsize=(7, 4))
     axis.plot(steps, exact_means, "o-", label="exact score")
@@ -346,6 +359,42 @@ def plot_reverse_metrics(reverse_results: list[dict[str, float]]) -> None:
     plt.close(figure)
 
 
+def plot_final_distribution(
+    exact_samples: torch.Tensor, learned_samples: torch.Tensor
+) -> None:
+    """Compare final reverse samples with the N(mu, tau^2) data density."""
+    x = torch.linspace(mu - 4 * tau, mu + 4 * tau, 500)
+    target_density = torch.exp(-0.5 * ((x - mu) / tau) ** 2) / (
+        math.sqrt(2 * math.pi) * tau
+    )
+
+    figure, axis = plt.subplots(figsize=(8, 5))
+    axis.hist(
+        learned_samples.squeeze(1).numpy(),
+        bins=80,
+        density=True,
+        alpha=0.4,
+        label="learned score samples",
+    )
+    axis.hist(
+        exact_samples.squeeze(1).numpy(),
+        bins=80,
+        density=True,
+        histtype="step",
+        linewidth=1.5,
+        label="exact score samples",
+    )
+    axis.plot(x.numpy(), target_density.numpy(), linewidth=2, label="target N(1, 1)")
+    axis.set_xlabel("x")
+    axis.set_ylabel("density")
+    axis.set_title(f"Final generated distribution (N = {n_values[-1]} steps)")
+    axis.grid(alpha=0.25)
+    axis.legend()
+    figure.tight_layout()
+    figure.savefig(results_dir / "final_generated_distribution.png", dpi=160)
+    plt.close(figure)
+
+
 def save_metrics(
     history: dict[str, list[float]],
     fixed_time_metrics: list[dict[str, float]],
@@ -370,6 +419,8 @@ def save_metrics(
             "reverse_sample_count": reverse_sample_count,
             "reverse_seed": reverse_seed,
             "n_values": n_values,
+            "reverse_endpoint": 0.0,
+            "final_step_size": t_min,
         },
         "training_summary": {
             "final_weighted_dsm_loss": history["weighted_dsm_loss"][-1],
@@ -378,7 +429,7 @@ def save_metrics(
         },
         "fixed_time_score_metrics": fixed_time_metrics,
         "directional_check": directional_results,
-        "reverse_target": {"mean": mu, "variance": tau**2 + t_min},
+        "reverse_target": {"mean": mu, "variance": tau**2},
         "reverse_results": reverse_results,
     }
     with (results_dir / "metrics.json").open("w", encoding="utf-8") as file:
@@ -392,8 +443,11 @@ def main() -> None:
     model, history = train()
     plot_training_metrics(history)
     fixed_time_metrics, directional_results = fixed_t_score_validation(model)
-    reverse_results = reverse_discretization_experiment(model)
+    reverse_results, exact_samples, learned_samples = reverse_discretization_experiment(
+        model
+    )
     plot_reverse_metrics(reverse_results)
+    plot_final_distribution(exact_samples, learned_samples)
     save_metrics(history, fixed_time_metrics, directional_results, reverse_results)
     print(f"\nSaved results to {results_dir}")
 

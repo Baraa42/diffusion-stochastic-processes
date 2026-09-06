@@ -47,6 +47,19 @@ def test_reverse_sampler_preserves_shape() -> None:
     assert samples.shape == xT.shape
 
 
+def test_reverse_sampler_never_queries_below_t_min() -> None:
+    queried_times: list[float] = []
+
+    def recording_score(x: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
+        queried_times.append(t.min().item())
+        return experiment.exact_score(x, t)
+
+    generator = torch.Generator().manual_seed(4)
+    experiment.reverse_sample(torch.zeros(16, 1), recording_score, 10, generator)
+    assert abs(min(queried_times) - experiment.t_min) < 1e-8
+    assert all(time >= experiment.t_min for time in queried_times)
+
+
 def test_exact_reverse_sampler_recovers_target_moments() -> None:
     generator = torch.Generator().manual_seed(2)
     xT = experiment.mu + (experiment.tau**2 + experiment.t_max) ** 0.5 * torch.randn(
@@ -56,6 +69,6 @@ def test_exact_reverse_sampler_recovers_target_moments() -> None:
     samples = experiment.reverse_sample(
         xT, experiment.exact_score, 200, noise_generator
     )
-    target_variance = experiment.tau**2 + experiment.t_min
+    target_variance = experiment.tau**2
     assert abs(samples.mean().item() - experiment.mu) < 0.08
     assert abs(samples.var(unbiased=True).item() - target_variance) < 0.12

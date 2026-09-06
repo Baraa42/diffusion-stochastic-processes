@@ -19,7 +19,9 @@
       500,
       1000,
       2000
-    ]
+    ],
+    "reverse_endpoint": 0.0,
+    "final_step_size": 0.001
   },
   "training_summary": {
     "final_weighted_dsm_loss": 0.8854336738586426,
@@ -200,40 +202,40 @@
   ],
   "reverse_target": {
     "mean": 1.0,
-    "variance": 1.001
+    "variance": 1.0
   },
   "reverse_results": [
     {
       "n_steps": 100,
-      "exact_mean": 1.0010663270950317,
-      "exact_variance": 1.0092180967330933,
-      "exact_euler_variance": 1.0099462788195934,
-      "learned_mean": 1.0074312686920166,
-      "learned_variance": 1.0208377838134766
+      "exact_mean": 1.000962734222412,
+      "exact_variance": 1.0082392692565918,
+      "exact_euler_variance": 1.0089294120660492,
+      "learned_mean": 1.0073163509368896,
+      "learned_variance": 1.0199391841888428
     },
     {
       "n_steps": 500,
-      "exact_mean": 1.0002458095550537,
-      "exact_variance": 0.9836917519569397,
-      "exact_euler_variance": 1.002779006911304,
-      "learned_mean": 1.006384015083313,
-      "learned_variance": 0.995268702507019
+      "exact_mean": 1.0000133514404297,
+      "exact_variance": 0.983055055141449,
+      "exact_euler_variance": 1.001776453228394,
+      "learned_mean": 1.0061396360397339,
+      "learned_variance": 0.9947096109390259
     },
     {
       "n_steps": 1000,
-      "exact_mean": 1.0061601400375366,
-      "exact_variance": 0.9965583086013794,
-      "exact_euler_variance": 1.0018888628405769,
-      "learned_mean": 1.012327790260315,
-      "learned_variance": 1.0088337659835815
+      "exact_mean": 1.005749225616455,
+      "exact_variance": 0.995526134967804,
+      "exact_euler_variance": 1.0008880867789323,
+      "learned_mean": 1.0119056701660156,
+      "learned_variance": 1.0078775882720947
     },
     {
       "n_steps": 2000,
-      "exact_mean": 1.0050264596939087,
-      "exact_variance": 0.9927878975868225,
-      "exact_euler_variance": 1.0014442712657976,
-      "learned_mean": 1.0111688375473022,
-      "learned_variance": 1.00516676902771
+      "exact_mean": 1.005294919013977,
+      "exact_variance": 0.9915034770965576,
+      "exact_euler_variance": 1.000444383055304,
+      "learned_mean": 1.0114262104034424,
+      "learned_variance": 1.0039585828781128
     }
   ]
 }

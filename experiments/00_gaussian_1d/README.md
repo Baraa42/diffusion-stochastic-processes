@@ -106,23 +106,36 @@ $$
 That initialization is available because this Gaussian experiment is
 analytically controlled; it is not presented as a general practical terminal
 prior. Within each paired comparison, exact and learned runs use the same
-seeded `xT` and Brownian increments. The target at `t_min` has mean `1.0` and
-variance `1.001`.
+seeded `xT` and Brownian increments. The regular grid runs from `t_max` to
+`t_min`, followed by one final step
+
+$$
+X_0\approx
+X_{t_{\min}}
++
+t_{\min}s(X_{t_{\min}},t_{\min})
++
+\sqrt{t_{\min}}Z.
+$$
+
+This lands at data time zero while evaluating the score at exactly `t_min`,
+never below the training range. The final target is
+$X_0\sim\mathcal N(1,1)$, with mean `1.0` and variance `1.0`.
 
 | N | Exact mean | Exact variance | Exact Euler expected variance | Learned mean | Learned variance |
 |---:|---:|---:|---:|---:|---:|
-| 100 | 1.001066 | 1.009218 | 1.009946 | 1.007431 | 1.020838 |
-| 500 | 1.000246 | 0.983692 | 1.002779 | 1.006384 | 0.995269 |
-| 1000 | 1.006160 | 0.996558 | 1.001889 | 1.012328 | 1.008834 |
-| 2000 | 1.005026 | 0.992788 | 1.001444 | 1.011169 | 1.005167 |
+| 100 | 1.000963 | 1.008239 | 1.008929 | 1.007316 | 1.019939 |
+| 500 | 1.000013 | 0.983055 | 1.001776 | 1.006140 | 0.994710 |
+| 1000 | 1.005749 | 0.995526 | 1.000888 | 1.011906 | 1.007878 |
+| 2000 | 1.005295 | 0.991503 | 1.000444 | 1.011426 | 1.003959 |
 
 The analytically propagated exact Euler variance shows the discretization bias
 decreasing from `8.95e-3` at 100 steps to `4.44e-4` at 2,000 steps. Sampled
 exact variances are not monotone because 20,000-particle Monte Carlo error is
 still visible. Comparing paired exact and learned samples isolates an
 additional learned-score effect: learned variance stays roughly `0.012` above
-the paired exact result. At 2,000 steps it is `1.005167`, a small positive bias
-relative to the `1.001` target near the terminal low-time regime.
+the paired exact result. At 2,000 steps it is `1.003959`, a small positive bias
+relative to the `1.0` target near the terminal low-time regime.
 
 Reverse sampling materially contracts the initial variance from `3.0` toward
 the target, but the result is not exact. The exact-score control diagnoses time
@@ -138,5 +151,6 @@ poetry run pytest
 poetry run python experiments/00_gaussian_1d/train.py
 ```
 
-The run writes plots and machine-readable metrics to
-`results/00_gaussian_1d/metrics.json`.
+The run writes plots—including a final learned-sample histogram against the
+analytical $\mathcal N(1,1)$ density—and machine-readable metrics to
+`results/00_gaussian_1d/`.
