@@ -8,30 +8,30 @@ score, and use both scores in the same reverse Euler-Maruyama sampler.
 
 The data and corruption process are
 
-\[
+$$
 X_0\sim\mathcal N(\mu,\tau^2),\qquad
 X_t=X_0+\sqrt t\,\varepsilon,\qquad
 \varepsilon\sim\mathcal N(0,1),
-\]
+$$
 
-with `mu = 1`, `tau = 1`, and `t in [0.001, 2]`. Conditional on (X_0),
+with `mu = 1`, `tau = 1`, and `t in [0.001, 2]`. Conditional on $X_0$,
 
-\[
+$$
 X_t\mid X_0\sim\mathcal N(X_0,t),\qquad
 \nabla_{x_t}\log p(x_t\mid x_0)
 =-\frac{x_t-x_0}{t}
 =-\frac{\varepsilon}{\sqrt t}.
-\]
+$$
 
 This conditional corruption score is the DSM target. The network receives only
 `(x_t, t)`—never `x0` or `eps`. Under squared error, the optimal prediction is
 the conditional mean of the noisy target given `(x_t, t)`. The denoising-score
 identity makes that conditional mean the marginal score. Here,
 
-\[
+$$
 X_t\sim\mathcal N(\mu,\tau^2+t),\qquad
 s^*(x,t)=-\frac{x-\mu}{\tau^2+t}.
-\]
+$$
 
 The analytical score is used only for validation and the exact-score reverse
 control, not as a training target.
@@ -40,25 +40,25 @@ control, not as a training target.
 
 Small time is statistically difficult because
 
-\[
+$$
 \operatorname{Var}\left(-\varepsilon/\sqrt t\right)=1/t.
-\]
+$$
 
 This run samples time log-uniformly,
 
-\[
+$$
 \log t\sim U(\log t_{\min},\log t_{\max}),
-\]
+$$
 
 which gives the small-time region more coverage than uniform time sampling. It
 also changes the stochastic optimization behavior and did not improve every
 fixed-time MSE in this seeded run. Training uses
 
-\[
+$$
 \mathbb E\left[t\left(s_\theta(X_t,t)+\frac{\varepsilon}{\sqrt t}\right)^2\right].
-\]
+$$
 
-Multiplication by (t) counteracts the (1/t) target variance without changing
+Multiplication by $t$ counteracts the $1/t$ target variance without changing
 the target itself or the population-optimal marginal score.
 
 The model is a `2 -> 32 -> 32 -> 1` MLP with `Tanh` activations. It is trained
@@ -91,17 +91,17 @@ low-time grid errors occur mainly in the low-density far tails where the small
 For the variance-exploding forward SDE used here, one backward step of size
 `dt > 0` is
 
-\[
+$$
 X_{t-dt}\approx X_t+dt\,s(X_t,t)+\sqrt{dt}\,Z,
 \qquad Z\sim\mathcal N(0,1).
-\]
+$$
 
 The score-agnostic sampler accepts either `exact_score` or the learned model.
 Both runs start from the exact toy terminal marginal
 
-\[
+$$
 X_T\sim\mathcal N(\mu,\tau^2+t_{\max}).
-\]
+$$
 
 That initialization is available because this Gaussian experiment is
 analytically controlled; it is not presented as a general practical terminal
